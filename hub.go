@@ -39,7 +39,8 @@ type Stream struct {
 	q         *pubsub.Queue
 	codecs    []av.CodecData
 	vidx      int
-	conn      *rtmp.Conn
+	src       source
+	Source    string // "RTMP" sau "PULL <url>"
 	PubIP     string
 	Start     time.Time
 	done      chan struct{}
@@ -131,14 +132,31 @@ func (h *Hub) handlePublish(conn *rtmp.Conn) {
 		logf("PUBLISH respins %s/%s de la %s: %v", app, name, ip, err)
 		return
 	}
+	if sc.Pull != "" {
+		logf("PUBLISH respins %s/%s de la %s: streamul e în mod pull", app, name, ip)
+		return
+	}
 	codecs, err := conn.Streams()
 	if err != nil {
 		logf("PUBLISH %s/%s: eroare la citirea codecurilor: %v", app, name, err)
 		return
 	}
+	if err := h.runStream(app, name, sc, conn, codecs, ip, "RTMP"); err != nil {
+		logf("PUBLISH respins %s/%s de la %s: %v", app, name, ip, err)
+	}
+}
 
+// source is anything that produces packets for a live stream (RTMP publisher, pull).
+type source interface {
+	ReadPacket() (av.Packet, error)
+	Close() error
+	RxBytes() uint64
+}
+
+// runStream registers a live stream and pumps packets from src until it ends.
+func (h *Hub) runStream(app, name string, sc *StreamConf, src source, codecs []av.CodecData, ip, kind string) error {
 	st := &Stream{
-		App: app, Name: name, Conf: *sc, conn: conn, PubIP: ip, Start: time.Now(),
+		App: app, Name: name, Conf: *sc, src: src, Source: kind, PubIP: ip, Start: time.Now(),
 		done: make(chan struct{}), clients: map[int64]*Client{}, hlsKeys: map[string]int64{},
 		codecs: codecs, vidx: -1, tsCapable: true,
 	}
@@ -161,8 +179,7 @@ func (h *Hub) handlePublish(conn *rtmp.Conn) {
 	h.mu.Lock()
 	if _, exists := h.streams[k]; exists {
 		h.mu.Unlock()
-		logf("PUBLISH respins %s de la %s: deja activ", k, ip)
-		return
+		return errors.New("deja activ")
 	}
 	st.q = pubsub.NewQueue()
 	st.q.SetMaxGopCount(2)
@@ -170,7 +187,7 @@ func (h *Hub) handlePublish(conn *rtmp.Conn) {
 	h.streams[k] = st
 	h.mu.Unlock()
 
-	logf("PUBLISH start %s de la %s [%s]", k, ip, st.codecString())
+	logf("START %s [%s de la %s] [%s]", k, kind, ip, st.codecString())
 	c := getCfg()
 	if c.HLSEnabled && st.tsCapable {
 		st.hls = newHLS(c.HLSSegment, c.HLSListSize)
@@ -191,9 +208,12 @@ func (h *Hub) handlePublish(conn *rtmp.Conn) {
 	}
 
 	for {
-		pkt, err := conn.ReadPacket()
+		pkt, err := src.ReadPacket()
 		if err != nil {
 			break
+		}
+		if int(pkt.Idx) >= len(codecs) {
+			continue
 		}
 		if int(pkt.Idx) == st.vidx {
 			atomic.AddInt64(&st.vframes, 1)
@@ -213,7 +233,8 @@ func (h *Hub) handlePublish(conn *rtmp.Conn) {
 		}
 	}
 	st.mu.Unlock()
-	logf("PUBLISH stop %s (durată %s)", k, time.Since(st.Start).Round(time.Second))
+	logf("STOP %s (durată %s)", k, time.Since(st.Start).Round(time.Second))
+	return nil
 }
 
 func (h *Hub) handlePlay(conn *rtmp.Conn) {
@@ -294,8 +315,8 @@ func (s *Stream) codecString() string {
 }
 
 func (s *Stream) kickPublisher() {
-	if s.conn != nil {
-		s.conn.Close()
+	if s.src != nil {
+		s.src.Close()
 	}
 }
 
@@ -305,7 +326,7 @@ func statsLoop() {
 	for range time.Tick(2 * time.Second) {
 		now := time.Now().UnixNano()
 		for _, s := range hub.list() {
-			rx := s.conn.RxBytes()
+			rx := s.src.RxBytes()
 			s.mu.Lock()
 			s.kbpsIn = float64(rx-s.lastRx) * 8 / 1000 / iv
 			s.lastRx = rx

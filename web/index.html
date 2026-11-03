@@ -119,7 +119,7 @@ video{width:100%;background:#000;border-radius:8px;aspect-ratio:16/9}
     <h2>Streamuri configurate<span class="sp"></span><button class="btn" onclick="addStream()">+ Adaugă</button><button class="btn primary" onclick="saveCfg()">Salvează</button></h2>
     <p class="small">Publicare din OBS / vMix / FFmpeg: <b>Server</b> <span class="mono" id="pubsrv"></span> · <b>Cheie stream</b> <span class="mono">&lt;nume&gt;?key=&lt;cheie&gt;</span>. Modificările de push/înregistrare se aplică la următoarea publicare.</p>
     <div class="tablewrap"><table>
-      <thead><tr><th>Aplicație</th><th>Nume</th><th>Cheie publicare</th><th>Activ</th><th>DVR</th><th style="min-width:260px">Restream (un URL rtmp:// pe linie)</th><th>Notă</th><th></th></tr></thead>
+      <thead><tr><th>Aplicație</th><th>Nume</th><th style="min-width:230px">Pull — sursă externă (opțional)</th><th>Cheie publicare</th><th>Activ</th><th>DVR</th><th style="min-width:260px">Restream (un URL rtmp:// pe linie)</th><th>Notă</th><th></th></tr></thead>
       <tbody id="stbody"></tbody>
     </table></div>
   </section>
@@ -159,6 +159,14 @@ video{width:100%;background:#000;border-radius:8px;aspect-ratio:16/9}
         <div><label>Durată segment (sec)</label><input type="number" id="s_hls_segment_sec"></div>
         <div><label>Segmente în playlist</label><input type="number" id="s_hls_list_size"></div>
       </div>
+    </div>
+    <div class="section card">
+      <h2>Pull / FFmpeg</h2>
+      <div class="form">
+        <div style="grid-column:span 2"><label>Cale FFmpeg (gol = automat: lângă executabil sau în PATH)</label><input id="s_ffmpeg_path" class="mono" placeholder="ex. C:\ffmpeg\bin\ffmpeg.exe sau /usr/bin/ffmpeg"></div>
+        <div><label>Detectat</label><div class="mono small" id="ffdet" style="padding-top:8px"></div></div>
+      </div>
+      <p class="small">Sursele <span class="mono">rtmp://</span> se preiau nativ. HLS, SRT, RTSP, rtmps și UDP/RTP folosesc FFmpeg (fără FFmpeg: HTTP-TS și UDP multicast merg nativ, doar H.264/AAC). Audio MP2/AC3 e convertit automat în AAC.</p>
     </div>
     <div class="section card">
       <h2>DVR</h2>
@@ -248,6 +256,9 @@ async function refresh(){
 }
 setInterval(()=>{if($('app').style.display!=='none'&&curTab==='live')refresh().catch(()=>{})},2000);
 
+function pullLine(p){if(!p)return 'Pull: așteptare…';
+  const c=p.status==='conectat'?'g':p.status==='eroare'?'r':'y';
+  return `<span class="dot ${c}"></span>Pull <span class="mono">${esc(p.url)}</span> — ${esc(p.status)}${p.mode?' ('+esc(p.mode)+')':''}${p.status==='conectat'?' '+fmtDur(p.since):''}${p.err?' · <span style="color:#ff8a8d">'+esc(p.err)+'</span>':''}`}
 function renderLive(){
   const live=S.streams;$('livecount').textContent=live.length;
   let tin=0,tout=0,tv=0;live.forEach(s=>{tin+=s.kbps_in;tout+=s.kbps_out;tv+=s.clients.length});
@@ -268,7 +279,7 @@ function renderLive(){
         <div class="stat"><b>${s.clients.length}</b><span>clienți · ${fmtKbps(s.kbps_out)}</span></div>
         <div class="stat"><b>${fmtDur(s.uptime)}</b><span>uptime</span></div>
       </div>
-      <div class="small">Publisher: <span class="mono">${esc(s.pub_ip)}</span>${s.rec?` · DVR: <span class="mono">${esc(s.rec.file)}</span> (${fmtBytes(s.rec.bytes)})${s.rec.err?' <span style="color:#ff8a8d">'+esc(s.rec.err)+'</span>':''}`:''}</div>
+      <div class="small">${s.source==='PULL'?pullLine(S.pulls[k]):'Publisher: <span class="mono">'+esc(s.pub_ip)+'</span>'}${s.rec?` · DVR: <span class="mono">${esc(s.rec.file)}</span> (${fmtBytes(s.rec.bytes)})${s.rec.err?' <span style="color:#ff8a8d">'+esc(s.rec.err)+'</span>':''}`:''}</div>
       ${s.push.map(p=>`<div class="small" style="margin-top:4px"><span class="dot ${p.status==='conectat'?'g':p.status==='eroare'?'r':'y'}"></span><span class="mono">${esc(p.url)}</span> — ${esc(p.status)}${p.status==='conectat'?' '+fmtDur(p.since)+' · '+fmtBytes(p.bytes):''}${p.err?' · '+esc(p.err):''}</div>`).join('')}
       ${s.clients.length?`<div class="clients"><a class="small" style="cursor:pointer" onclick="openClients['${esc(k)}']=!openClients['${esc(k)}'];renderLive()">${openClients[k]?'▾':'▸'} Clienți (${s.clients.length})</a>
       ${openClients[k]?`<div class="tablewrap"><table style="margin-top:6px"><tr><th>IP</th><th>Protocol</th><th>Token</th><th>Viteză</th><th>Total</th><th>Durată</th><th></th></tr>${s.clients.map(c=>`<tr><td class="mono" title="${esc(c.ua)}">${esc(c.ip)}</td><td>${c.proto}</td><td class="mono">${esc(c.token||'-')}</td><td>${fmtKbps(c.kbps)}</td><td>${fmtBytes(c.bytes)}</td><td>${fmtDur((Date.now()-new Date(c.start))/1000)}</td><td>${c.proto!=='HLS'?`<button class="btn sm danger" onclick="kick('${esc(s.app)}','${esc(s.name)}',${c.id})">×</button>`:''}</td></tr>`).join('')}</table></div>`:''}</div>`:''}
@@ -276,7 +287,7 @@ function renderLive(){
   }
   if(C)for(const s of C.streams){
     const k=s.app+'/'+s.name; if(liveKeys.has(k))continue;
-    h+=`<div class="card off"><div class="row"><span class="badge">OFFLINE</span><span class="name">${esc(k)}</span>${s.record?'<span class="badge rec">DVR</span>':''}${s.enabled?'':'<span class="badge">dezactivat</span>'}<span class="sp"></span><button class="btn sm" onclick="urls('${esc(s.app)}','${esc(s.name)}')">URL-uri</button></div>${s.note?`<div class="small" style="margin-top:6px">${esc(s.note)}</div>`:''}</div>`;
+    h+=`<div class="card off"><div class="row"><span class="badge">OFFLINE</span><span class="name">${esc(k)}</span>${s.record?'<span class="badge rec">DVR</span>':''}${s.enabled?'':'<span class="badge">dezactivat</span>'}<span class="sp"></span><button class="btn sm" onclick="urls('${esc(s.app)}','${esc(s.name)}')">URL-uri</button></div>${s.pull?`<div class="small" style="margin-top:6px">${pullLine(S.pulls[k])}</div>`:''}${s.note?`<div class="small" style="margin-top:6px">${esc(s.note)}</div>`:''}</div>`;
   }
   $('livegrid').innerHTML=h||'<div class="empty">Niciun stream. Adaugă unul din „Streamuri”.</div>';
 }
@@ -319,19 +330,20 @@ async function loadCfg(){
   renderStreams();renderTokens();
   for(const k of ['rtmp_port','http_port','hls_segment_sec','hls_list_size','record_dir','record_rotate_min','record_keep_days'])$('s_'+k).value=C[k];
   for(const k of ['publish_auth','allow_unknown','play_auth','hls_enabled'])$('s_'+k).checked=C[k];
-  $('pw_user').value=C.admin_user;
+  $('pw_user').value=C.admin_user;$('s_ffmpeg_path').value=C.ffmpeg_path||'';$('ffdet').textContent=(S&&S.ffmpeg)||'negăsit';
   $('tokinfo').innerHTML=C.play_auth?'Redarea cere token: adaugă <span class="mono">?token=…</span> la URL-urile HLS/FLV/TS/RTMP. „Streamuri permise”: <span class="mono">*</span> sau listă <span class="mono">live/tv1,live/tv2</span> (sau <span class="mono">live/*</span>).':'<span style="color:#ffd38a">Protecția cu token e dezactivată</span> — activeaz-o din Setări („Cere token la redare”).';
   if(curTab==='live')renderLive();
 }
 function syncSettings(){
   for(const k of ['rtmp_port','http_port','hls_segment_sec','hls_list_size','record_rotate_min','record_keep_days'])C[k]=parseInt($('s_'+k).value)||0;
-  C.record_dir=$('s_record_dir').value.trim();
+  C.record_dir=$('s_record_dir').value.trim();C.ffmpeg_path=$('s_ffmpeg_path').value.trim();
   for(const k of ['publish_auth','allow_unknown','play_auth','hls_enabled'])C[k]=$('s_'+k).checked;
 }
 function renderStreams(){
   $('stbody').innerHTML=C.streams.map((s,i)=>`<tr>
     <td><input value="${esc(s.app)}" onchange="C.streams[${i}].app=this.value.trim()" style="width:90px"></td>
     <td><input value="${esc(s.name)}" onchange="C.streams[${i}].name=this.value.trim()" style="width:120px"></td>
+    <td><input class="mono" value="${esc(s.pull||'')}" onchange="C.streams[${i}].pull=this.value.trim()" placeholder="rtmp:// http:// .m3u8 udp://@239.. srt://"></td>
     <td><div class="row" style="flex-wrap:nowrap"><input class="mono" value="${esc(s.key)}" onchange="C.streams[${i}].key=this.value.trim()" style="width:170px"><button class="btn sm" title="Generează" onclick="genKey(${i})">↻</button></div></td>
     <td><input type="checkbox" ${s.enabled?'checked':''} onchange="C.streams[${i}].enabled=this.checked"></td>
     <td><input type="checkbox" ${s.record?'checked':''} onchange="C.streams[${i}].record=this.checked"></td>
@@ -340,7 +352,7 @@ function renderStreams(){
     <td><button class="btn sm" onclick="urls('${esc(s.app)}','${esc(s.name)}')">URL</button> <button class="btn sm danger" onclick="C.streams.splice(${i},1);renderStreams()">Șterge</button></td></tr>`).join('')||'<tr><td colspan="8" class="empty">Niciun stream</td></tr>';
 }
 async function genKey(i){const r=await api('genkey');C.streams[i].key=r.key;renderStreams()}
-async function addStream(){const r=await api('genkey');C.streams.push({app:'live',name:'stream'+(C.streams.length+1),key:r.key,enabled:true,record:false,push:[],note:''});renderStreams()}
+async function addStream(){const r=await api('genkey');C.streams.push({app:'live',name:'stream'+(C.streams.length+1),key:r.key,enabled:true,record:false,push:[],pull:'',note:''});renderStreams()}
 function renderTokens(){
   $('tkbody').innerHTML=C.tokens.map((t,i)=>`<tr>
     <td><input value="${esc(t.name)}" onchange="C.tokens[${i}].name=this.value"></td>

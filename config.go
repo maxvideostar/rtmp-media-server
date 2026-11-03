@@ -24,6 +24,7 @@ type StreamConf struct {
 	Enabled bool     `json:"enabled"`
 	Record  bool     `json:"record"`
 	Push    []string `json:"push"`
+	Pull    string   `json:"pull"` // sursă externă (rtmp/http/hls/udp/srt/rtsp)
 	Note    string   `json:"note"`
 }
 
@@ -49,6 +50,8 @@ type Config struct {
 	HLSEnabled  bool `json:"hls_enabled"`
 	HLSSegment  int  `json:"hls_segment_sec"`
 	HLSListSize int  `json:"hls_list_size"`
+
+	FFmpegPath string `json:"ffmpeg_path"` // gol = auto (lângă executabil sau în PATH)
 
 	RecordDir       string `json:"record_dir"`
 	RecordRotateMin int    `json:"record_rotate_min"`
@@ -141,6 +144,7 @@ func normalize(c *Config) {
 		c.Tokens = []Token{}
 	}
 	for i := range c.Streams {
+		c.Streams[i].Pull = strings.TrimSpace(c.Streams[i].Pull)
 		if c.Streams[i].Push == nil {
 			c.Streams[i].Push = []string{}
 		}
@@ -161,6 +165,9 @@ func validate(c *Config) error {
 			return fmt.Errorf("stream duplicat: %s", k)
 		}
 		seen[k] = true
+		if s.Pull != "" && !validPull(s.Pull) {
+			return fmt.Errorf("pull invalid pentru %s: %s (rtmp, rtmps, http, https, udp, rtp, srt, rtsp)", k, s.Pull)
+		}
 		for _, p := range s.Push {
 			if !strings.HasPrefix(p, "rtmp://") {
 				return fmt.Errorf("push invalid (trebuie rtmp://): %s", p)
@@ -295,4 +302,13 @@ func randHex(n int) string {
 	b := make([]byte, n)
 	rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+func validPull(u string) bool {
+	for _, p := range []string{"rtmp://", "rtmps://", "http://", "https://", "udp://", "rtp://", "srt://", "rtsp://"} {
+		if strings.HasPrefix(strings.ToLower(u), p) {
+			return true
+		}
+	}
+	return false
 }

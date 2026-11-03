@@ -357,6 +357,7 @@ type streamInfo struct {
 	App     string     `json:"app"`
 	Name    string     `json:"name"`
 	PubIP   string     `json:"pub_ip"`
+	Source  string     `json:"source"`
 	Uptime  int64      `json:"uptime"`
 	Codecs  string     `json:"codecs"`
 	KbpsIn  float64    `json:"kbps_in"`
@@ -384,7 +385,7 @@ type pushInfo struct {
 func statusInfo() []streamInfo {
 	out := []streamInfo{}
 	for _, s := range hub.list() {
-		si := streamInfo{App: s.App, Name: s.Name, PubIP: s.PubIP, Uptime: int64(time.Since(s.Start).Seconds()),
+		si := streamInfo{App: s.App, Name: s.Name, PubIP: s.PubIP, Source: s.Source, Uptime: int64(time.Since(s.Start).Seconds()),
 			Codecs: s.codecString(), HLS: s.hls != nil, TS: s.tsCapable, Push: []pushInfo{}, Clients: []Client{}}
 		s.mu.Lock()
 		si.KbpsIn, si.FPS = s.kbpsIn, s.fps
@@ -450,7 +451,7 @@ func apiHandler(w http.ResponseWriter, r *http.Request) {
 		host, _ := os.Hostname()
 		writeJSON(w, 200, map[string]any{
 			"version": version, "uptime": int64(time.Since(startAt).Seconds()), "hostname": host,
-			"rtmp_port": c.RTMPPort, "http_port": c.HTTPPort, "streams": statusInfo(),
+			"rtmp_port": c.RTMPPort, "http_port": c.HTTPPort, "streams": statusInfo(), "pulls": pullStatus(), "ffmpeg": ffmpegPath(),
 			"default_pass": checkPass(c.AdminHash, "admin"),
 		})
 

@@ -54,6 +54,23 @@ if ($local -and (Test-Path $local) -and ((Resolve-Path $local).Path -ne $Exe)) {
     Move-Item "$Exe.new" $Exe -Force
 }
 
+# FFmpeg pentru pull (HLS/SRT/RTSP/UDP) - doar dacă lipsește
+$ff = Join-Path $Dir "ffmpeg.exe"
+if (-not (Test-Path $ff) -and -not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
+    try {
+        Say "Descarc FFmpeg (pentru pull)..."
+        $ProgressPreference = "SilentlyContinue"
+        $zip = Join-Path $env:TEMP "ffmpeg-rms.zip"
+        Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip" -OutFile $zip -UseBasicParsing
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $z = [IO.Compression.ZipFile]::OpenRead($zip)
+        $e = $z.Entries | Where-Object { $_.FullName -like "*/bin/ffmpeg.exe" } | Select-Object -First 1
+        [IO.Compression.ZipFileExtensions]::ExtractToFile($e, $ff, $true)
+        $z.Dispose(); Remove-Item $zip -Force
+        Say "FFmpeg instalat: $ff"
+    } catch { Warn "FFmpeg nu s-a putut descărca ($_). Pull-ul rtmp:// merge oricum." }
+}
+
 if (-not $existing) {
     & $Exe install
     sc.exe failure $Svc reset= 86400 actions= restart/5000/restart/5000/restart/5000 | Out-Null

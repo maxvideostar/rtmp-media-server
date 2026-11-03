@@ -4,6 +4,7 @@ Server media tip Wowza, un singur executabil pentru **Ubuntu** și **Windows**, 
 
 - **Ingest RTMP** (OBS, vMix, FFmpeg, encodere hardware) — H.264/AAC, plus HEVC/AV1/VP9 prin Enhanced RTMP
 - **Ieșiri**: HLS, HTTP-FLV, HTTP-TS (pentru IPTV/VLC), redare RTMP
+- **Pull** (preluare surse externe): RTMP nativ; HLS `.m3u8`, HTTP-TS, UDP/RTP multicast, SRT, RTSP, rtmps prin FFmpeg — reconectare automată, audio MP2/AC3 convertit automat în AAC
 - **Restream / push** automat către YouTube, alte servere RTMP etc., cu reconectare
 - **DVR**: înregistrare pe disc (`.ts`, rotire la N minute, ștergere automată după X zile)
 - **Securitate**: cheie de publicare per stream, tokenuri de redare (pe stream, cu expirare), login pe panou
@@ -46,6 +47,19 @@ Exemplu publicare FFmpeg (relay dintr-o sursă existentă):
 ```bash
 ffmpeg -re -i "http://sursa/canal.ts" -c copy -f flv "rtmp://IP:1935/live/tv1?key=CHEIA"
 ```
+
+## Pull (surse externe)
+În **Streamuri**, completează câmpul „Pull” al unui stream cu URL-ul sursei. Serverul o preia permanent și o republică local cu toate ieșirile (HLS/FLV/TS/RTMP, DVR, restream).
+
+| Sursă | Exemplu | Cum |
+|---|---|---|
+| RTMP | `rtmp://alt-server/live/canal` | nativ |
+| HLS | `https://site/canal/index.m3u8` | FFmpeg |
+| HTTP-TS | `http://IP:4000/canal` | FFmpeg (nativ fără FFmpeg) |
+| UDP multicast | `udp://@239.1.1.1:1234` (`?localaddr=IP_PLACA`) | FFmpeg (nativ fără FFmpeg) |
+| SRT / RTSP / rtmps | `srt://IP:9000`, `rtsp://cam/stream` | FFmpeg |
+
+FFmpeg e instalat automat de installere (Ubuntu: `apt`, Windows: `ffmpeg.exe` în `C:\rtmp-media-server`). Altă cale se setează în Setări. Un stream în mod pull nu acceptă publicare RTMP.
 
 ## Comenzi
 ```

@@ -31,6 +31,10 @@ case "$(uname -m)" in
 esac
 
 command -v curl >/dev/null || { apt-get update -qq && apt-get install -y -qq curl; }
+if ! command -v ffmpeg >/dev/null; then
+  say "Instalez FFmpeg (pentru pull HLS/SRT/RTSP/UDP)..."
+  apt-get update -qq && apt-get install -y -qq ffmpeg || warn "FFmpeg nu s-a putut instala — pull-ul rtmp:// merge oricum"
+fi
 
 mkdir -p "$DIR"
 TMP="$(mktemp)"

@@ -18,7 +18,7 @@ import (
 	"github.com/kardianos/service"
 )
 
-var version = "1.0.0"
+var version = "1.1.0"
 
 // ---------------- logging ----------------
 
@@ -99,6 +99,7 @@ func (p *program) run() {
 	}()
 	go statsLoop()
 	go cleanupLoop()
+	go pullManager()
 	logf("RTMP Media Server %s pornit — RTMP :%d, HTTP/panou :%d (http://IP:%d/panel/)", version, c.RTMPPort, c.HTTPPort, c.HTTPPort)
 }
 

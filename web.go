@@ -451,7 +451,7 @@ func apiHandler(w http.ResponseWriter, r *http.Request) {
 		host, _ := os.Hostname()
 		writeJSON(w, 200, map[string]any{
 			"version": version, "uptime": int64(time.Since(startAt).Seconds()), "hostname": host,
-			"rtmp_port": c.RTMPPort, "http_port": c.HTTPPort, "streams": statusInfo(), "pulls": pullStatus(), "ffmpeg": ffmpegPath(),
+			"rtmp_port": c.RTMPPort, "http_port": c.HTTPPort, "streams": statusInfo(), "pulls": pullStatus(), "rejected": recentRejections(), "ffmpeg": ffmpegPath(),
 			"default_pass": checkPass(c.AdminHash, "admin"),
 		})
 

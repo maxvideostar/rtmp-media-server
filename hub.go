@@ -14,6 +14,7 @@ import (
 	"github.com/datarhei/joy4/av/pubsub"
 	"github.com/datarhei/joy4/codec/aacparser"
 	"github.com/datarhei/joy4/codec/h264parser"
+	"github.com/datarhei/joy4/format/flv/flvio"
 	"github.com/datarhei/joy4/format/rtmp"
 	"github.com/datarhei/joy4/format/ts"
 )
@@ -102,11 +103,20 @@ func ipOf(a net.Addr) string {
 func parseRTMP(u *url.URL) (app, name string, q url.Values) {
 	q = u.Query()
 	p := strings.Trim(u.Path, "/")
+	p = strings.ReplaceAll(p, "/_definst_", "") // compatibil cu URL-uri Wowza
 	parts := strings.SplitN(p, "/", 2)
 	if len(parts) == 2 {
 		app, name = parts[0], parts[1]
 	} else if len(parts) == 1 {
 		app = parts[0]
+	}
+	// tcUrl cu query (rtmp://host/live?key=X + stream "tv1") ajunge ca "/live?key=X/tv1"
+	if name == "" && strings.Contains(u.RawQuery, "/") {
+		i := strings.LastIndex(u.RawQuery, "/")
+		name = u.RawQuery[i+1:]
+		if pq, err := url.ParseQuery(u.RawQuery[:i]); err == nil {
+			q = pq
+		}
 	}
 	// OBS sometimes puts "?key=" into the path segment
 	if i := strings.Index(name, "?"); i >= 0 {
@@ -120,22 +130,98 @@ func parseRTMP(u *url.URL) (app, name string, q url.Values) {
 	return
 }
 
-func (h *Hub) handlePublish(conn *rtmp.Conn) {
+// handleConn dispatches publish/play and captures the tcUrl (rtmp://host/app?key=X).
+func (h *Hub) handleConn(conn *rtmp.Conn) {
+	isPub, tcurl := false, ""
+	conn.OnPlayOrPublish = func(cmd string, p flvio.AMFMap) error {
+		isPub = cmd == "publish"
+		for _, k := range []string{"tcUrl", "tcurl"} {
+			if v, ok := p[k].(string); ok {
+				tcurl = v
+			}
+		}
+		return nil
+	}
+	if err := conn.Prepare(); err != nil {
+		return
+	}
+	if isPub {
+		conn.SetWriteIdleTimeout(0)
+		h.handlePublish(conn, tcurl)
+	} else {
+		conn.SetReadIdleTimeout(0)
+		h.handlePlay(conn)
+	}
+}
+
+type rejection struct {
+	Time   time.Time `json:"time"`
+	IP     string    `json:"ip"`
+	App    string    `json:"app"`
+	Name   string    `json:"name"`
+	Reason string    `json:"reason"`
+}
+
+var (
+	rejMu    sync.Mutex
+	rejected []rejection
+)
+
+func addRejection(ip, app, name, reason string) {
+	logf("PUBLISH respins %s/%s de la %s: %s", app, name, ip, reason)
+	rejMu.Lock()
+	defer rejMu.Unlock()
+	for i := range rejected { // un singur rând per encoder+stream
+		if rejected[i].IP == ip && rejected[i].App == app && rejected[i].Name == name {
+			rejected[i].Time, rejected[i].Reason = time.Now(), reason
+			return
+		}
+	}
+	rejected = append(rejected, rejection{time.Now(), ip, app, name, reason})
+	if len(rejected) > 20 {
+		rejected = rejected[len(rejected)-20:]
+	}
+}
+
+func recentRejections() []rejection {
+	rejMu.Lock()
+	defer rejMu.Unlock()
+	out := []rejection{}
+	for i := len(rejected) - 1; i >= 0; i-- {
+		if time.Since(rejected[i].Time) < 10*time.Minute {
+			if hub.get(rejected[i].App, rejected[i].Name) == nil {
+				out = append(out, rejected[i])
+			}
+		}
+	}
+	return out
+}
+
+func (h *Hub) handlePublish(conn *rtmp.Conn, tcurl string) {
 	app, name, q := parseRTMP(conn.URL)
 	ip := ipOf(conn.RemoteAddr())
 	key := q.Get("key")
 	if key == "" {
 		key = q.Get("k")
 	}
+	if key == "" && tcurl != "" {
+		if tu, err := url.Parse(tcurl); err == nil {
+			key = tu.Query().Get("key")
+			if key == "" {
+				key = tu.Query().Get("k")
+			}
+		}
+	}
 	sc, err := checkPublish(app, name, key)
 	if err != nil {
-		logf("PUBLISH respins %s/%s de la %s: %v", app, name, ip, err)
+		addRejection(ip, app, name, err.Error())
 		return
 	}
 	if sc.Pull != "" {
-		logf("PUBLISH respins %s/%s de la %s: streamul e în mod pull", app, name, ip)
+		addRejection(ip, app, name, "streamul e în mod pull")
 		return
 	}
+	app, name = sc.App, sc.Name
 	codecs, err := conn.Streams()
 	if err != nil {
 		logf("PUBLISH %s/%s: eroare la citirea codecurilor: %v", app, name, err)

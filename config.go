@@ -237,6 +237,16 @@ func checkPublish(app, name, key string) (*StreamConf, error) {
 	c := getCfg()
 	sc := c.findStream(app, name)
 	if sc == nil {
+		// stil YouTube/Wowza: numele publicat este chiar cheia unui stream din aplicație
+		for i := range c.Streams {
+			if c.Streams[i].App == app && c.Streams[i].Key != "" && subtle.ConstantTimeCompare([]byte(c.Streams[i].Key), []byte(name)) == 1 {
+				sc = &c.Streams[i]
+				key = name
+				break
+			}
+		}
+	}
+	if sc == nil {
 		if c.PublishAuth || !c.AllowUnknown {
 			return nil, errors.New("stream necunoscut")
 		}
@@ -245,7 +255,7 @@ func checkPublish(app, name, key string) (*StreamConf, error) {
 	if !sc.Enabled {
 		return nil, errors.New("stream dezactivat")
 	}
-	if c.PublishAuth && subtle.ConstantTimeCompare([]byte(sc.Key), []byte(key)) != 1 {
+	if c.PublishAuth && sc.Key != "" && subtle.ConstantTimeCompare([]byte(sc.Key), []byte(key)) != 1 {
 		return nil, errors.New("cheie greșită")
 	}
 	cp := *sc

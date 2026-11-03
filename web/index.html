@@ -112,12 +112,13 @@ video{width:100%;background:#000;border-radius:8px;aspect-ratio:16/9}
 
   <section id="t-live">
     <h2>Streamuri active <span class="badge" id="livecount">0</span><span class="sp"></span><span class="small" id="totals"></span></h2>
+    <div id="rejbox"></div>
     <div class="grid" id="livegrid"></div>
   </section>
 
   <section id="t-streams" style="display:none">
     <h2>Streamuri configurate<span class="sp"></span><button class="btn" onclick="addStream()">+ Adaugă</button><button class="btn primary" onclick="saveCfg()">Salvează</button></h2>
-    <p class="small">Publicare din OBS / vMix / FFmpeg: <b>Server</b> <span class="mono" id="pubsrv"></span> · <b>Cheie stream</b> <span class="mono">&lt;nume&gt;?key=&lt;cheie&gt;</span>. Modificările de push/înregistrare se aplică la următoarea publicare.</p>
+    <p class="small">Publicare din OBS / vMix / FFmpeg: <b>Server</b> <span class="mono" id="pubsrv"></span> · <b>Cheie stream</b> <span class="mono">&lt;nume&gt;?key=&lt;cheie&gt;</span>. Cheie goală = encoderul publică fără cheie. Funcționează și <span class="mono">rtmp://IP/live?key=CHEIE</span> sau cheia ca nume de stream. Modificările de push/înregistrare se aplică la următoarea publicare.</p>
     <div class="tablewrap"><table>
       <thead><tr><th>Aplicație</th><th>Nume</th><th style="min-width:230px">Pull — sursă externă (opțional)</th><th>Cheie publicare</th><th>Activ</th><th>DVR</th><th style="min-width:260px">Restream (un URL rtmp:// pe linie)</th><th>Notă</th><th></th></tr></thead>
       <tbody id="stbody"></tbody>
@@ -259,7 +260,22 @@ setInterval(()=>{if($('app').style.display!=='none'&&curTab==='live')refresh().c
 function pullLine(p){if(!p)return 'Pull: așteptare…';
   const c=p.status==='conectat'?'g':p.status==='eroare'?'r':'y';
   return `<span class="dot ${c}"></span>Pull <span class="mono">${esc(p.url)}</span> — ${esc(p.status)}${p.mode?' ('+esc(p.mode)+')':''}${p.status==='conectat'?' '+fmtDur(p.since):''}${p.err?' · <span style="color:#ff8a8d">'+esc(p.err)+'</span>':''}`}
+function renderRej(){
+  const r=(S.rejected||[]);
+  $('rejbox').innerHTML=r.length?`<div class="card" style="margin-bottom:14px;border-color:#6b4d12">
+    <h2 style="margin-bottom:8px">Publicări respinse recent</h2>
+    <div class="tablewrap"><table><tr><th>Stream</th><th>Encoder IP</th><th>Motiv</th><th>Ultima încercare</th><th></th></tr>
+    ${r.map(x=>`<tr><td class="mono">${esc(x.app+'/'+x.name)}</td><td class="mono">${esc(x.ip)}</td><td>${esc(x.reason)}</td><td>${new Date(x.time).toLocaleTimeString('ro-RO')}</td>
+    <td>${x.reason==='stream necunoscut'?`<button class="btn sm primary" onclick="quickAdd('${esc(x.app)}','${esc(x.name)}')">Adaugă stream</button>`:''}</td></tr>`).join('')}</table></div>
+    <p class="small" style="margin-bottom:0">„Adaugă stream” îl creează fără cheie (encoderul se conectează imediat). Poți pune o cheie ulterior din „Streamuri”.</p></div>`:'';
+}
+async function quickAdd(app,name){
+  if(!C)await loadCfg();
+  if(!C.streams.find(s=>s.app===app&&s.name===name))C.streams.push({app,name,key:'',enabled:true,record:false,push:[],pull:'',note:''});
+  try{await api('config',{method:'PUT',body:JSON.stringify(C)});toast('Adăugat '+app+'/'+name+' — encoderul se conectează la următoarea încercare');await loadCfg();refresh()}catch(e){toast(e.message,1)}
+}
 function renderLive(){
+  renderRej();
   const live=S.streams;$('livecount').textContent=live.length;
   let tin=0,tout=0,tv=0;live.forEach(s=>{tin+=s.kbps_in;tout+=s.kbps_out;tv+=s.clients.length});
   $('totals').textContent=live.length?`intrare ${fmtKbps(tin)} · ieșire ${fmtKbps(tout)} · ${tv} clienți`:'';
@@ -310,7 +326,7 @@ function closePlay(){$('mplay').classList.remove('on');if(hls){hls.destroy();hls
 function urls(app,name){
   const sc=C&&C.streams.find(s=>s.app===app&&s.name===name);
   const tk=C&&C.play_auth?'?token=TOKEN':'';
-  const key=sc&&C.publish_auth?'?key='+sc.key:'';
+  const key=sc&&C.publish_auth&&sc.key?'?key='+sc.key:'';
   const list=[
     ['OBS Server',rtmpBase()+'/'+app],['OBS Cheie',name+key],
     ['Publicare FFmpeg',rtmpBase()+'/'+app+'/'+name+key],
@@ -344,7 +360,7 @@ function renderStreams(){
     <td><input value="${esc(s.app)}" onchange="C.streams[${i}].app=this.value.trim()" style="width:90px"></td>
     <td><input value="${esc(s.name)}" onchange="C.streams[${i}].name=this.value.trim()" style="width:120px"></td>
     <td><input class="mono" value="${esc(s.pull||'')}" onchange="C.streams[${i}].pull=this.value.trim()" placeholder="rtmp:// http:// .m3u8 udp://@239.. srt://"></td>
-    <td><div class="row" style="flex-wrap:nowrap"><input class="mono" value="${esc(s.key)}" onchange="C.streams[${i}].key=this.value.trim()" style="width:170px"><button class="btn sm" title="Generează" onclick="genKey(${i})">↻</button></div></td>
+    <td><div class="row" style="flex-wrap:nowrap"><input class="mono" value="${esc(s.key)}" onchange="C.streams[${i}].key=this.value.trim()" style="width:170px" placeholder="(fără cheie)"><button class="btn sm" title="Generează" onclick="genKey(${i})">↻</button></div></td>
     <td><input type="checkbox" ${s.enabled?'checked':''} onchange="C.streams[${i}].enabled=this.checked"></td>
     <td><input type="checkbox" ${s.record?'checked':''} onchange="C.streams[${i}].record=this.checked"></td>
     <td><textarea rows="${Math.max(2,s.push.length)}" onchange="C.streams[${i}].push=this.value.split('\\n').map(x=>x.trim()).filter(Boolean)" placeholder="rtmp://a.rtmp.youtube.com/live2/CHEIE">${esc(s.push.join('\n'))}</textarea></td>

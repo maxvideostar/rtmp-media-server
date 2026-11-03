@@ -18,7 +18,7 @@ import (
 	"github.com/kardianos/service"
 )
 
-var version = "1.1.1"
+var version = "1.2.0"
 
 // ---------------- logging ----------------
 
@@ -73,8 +73,7 @@ func (p *program) Start(s service.Service) error {
 func (p *program) run() {
 	c := getCfg()
 	srv := &rtmp.Server{
-		HandlePublish:         hub.handlePublish,
-		HandlePlay:            hub.handlePlay,
+		HandleConn:            hub.handleConn,
 		ConnectionIdleTimeout: 20 * time.Second,
 		SkipInvalidMessages:   true,
 	}

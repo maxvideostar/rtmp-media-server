@@ -1,0 +1,30 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - name: Build
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          LD="-s -w -X main.version=$V"
+          mkdir -p dist
+          CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -trimpath -ldflags "$LD" -o dist/rtmp-media-server-linux-amd64 .
+          CGO_ENABLED=0 GOOS=linux   GOARCH=arm64 go build -trimpath -ldflags "$LD" -o dist/rtmp-media-server-linux-arm64 .
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "$LD" -o dist/rtmp-media-server-windows-amd64.exe .
+          mkdir -p win && cp dist/rtmp-media-server-windows-amd64.exe win/rtmp-media-server.exe && cp install.ps1 install.bat win/
+          (cd win && zip -9 ../dist/rtmp-media-server-windows-amd64.zip *)
+          (cd dist && sha256sum * > SHA256SUMS.txt)
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: dist/*

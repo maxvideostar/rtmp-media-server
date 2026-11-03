@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RTMP Media Server</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='14' fill='%23e5484d'/><circle cx='16' cy='16' r='6' fill='white'/></svg>">
+<style>
+:root{
+  --bg:#0f1115;--panel:#171a21;--panel2:#1d212a;--line:#2a2f3a;--text:#e6e8ee;--muted:#8b93a7;
+  --accent:#e5484d;--accent2:#ff6b6f;--ok:#30a46c;--warn:#f5a524;--info:#3e8ef7;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+a{color:var(--info)}
+button,input,select,textarea{font:inherit;color:inherit}
+input,select,textarea{background:#0b0d11;border:1px solid var(--line);border-radius:6px;padding:7px 9px;width:100%}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--info)}
+input[type=checkbox]{width:auto;accent-color:var(--accent)}
+textarea{font-family:var(--mono);font-size:12px;resize:vertical;min-height:34px}
+.btn{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:6px 12px;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:#3b4252}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btn.primary:hover{background:var(--accent2)}
+.btn.danger{color:#ff8a8d}
+.btn.sm{padding:3px 8px;font-size:12px}
+header{display:flex;align-items:center;gap:14px;padding:12px 20px;border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:5;flex-wrap:wrap}
+.logo{display:flex;align-items:center;gap:9px;font-weight:700;letter-spacing:.2px}
+.logo i{width:12px;height:12px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px #e5484d33}
+.meta{color:var(--muted);font-size:12px}
+nav{display:flex;gap:4px;margin-left:auto;flex-wrap:wrap}
+nav a{padding:6px 11px;border-radius:6px;color:var(--muted);text-decoration:none;cursor:pointer}
+nav a.on{background:var(--panel2);color:var(--text)}
+main{max-width:1280px;margin:0 auto;padding:20px}
+.warnbar{background:#3a2a0b;border:1px solid #6b4d12;color:#ffd38a;padding:9px 14px;border-radius:8px;margin-bottom:16px}
+h2{font-size:16px;margin:0 0 14px;display:flex;align-items:center;gap:10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+.card.off{opacity:.5}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.sp{flex:1}
+.name{font-weight:700;font-size:15px;font-family:var(--mono)}
+.badge{font-size:11px;padding:2px 7px;border-radius:99px;border:1px solid var(--line);color:var(--muted);font-weight:600}
+.badge.live{background:var(--accent);border-color:var(--accent);color:#fff}
+.badge.rec{border-color:#e5484d;color:#ff8a8d}
+.badge.ok{border-color:#1f6b47;color:#5fd39a}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
+.stat{background:var(--panel2);border-radius:8px;padding:8px 10px}
+.stat b{display:block;font-size:15px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.stat span{font-size:11px;color:var(--muted)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);margin-right:6px}
+.dot.g{background:var(--ok)}.dot.y{background:var(--warn)}.dot.r{background:var(--accent)}
+.small{font-size:12px;color:var(--muted)}
+.mono{font-family:var(--mono);font-size:12px}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);font-weight:600;padding:8px 6px;border-bottom:1px solid var(--line)}
+td{padding:7px 6px;border-bottom:1px solid #20242d;vertical-align:top}
+.tablewrap{overflow-x:auto}
+.empty{color:var(--muted);text-align:center;padding:40px}
+.form{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+.form label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+.chk{display:flex;align-items:center;gap:8px;padding-top:22px}
+.section{margin-bottom:26px}
+.modal{position:fixed;inset:0;background:#000a;display:none;align-items:center;justify-content:center;z-index:20;padding:16px}
+.modal.on{display:flex}
+.modal .box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;width:min(860px,100%);max-height:92vh;overflow:auto}
+video{width:100%;background:#000;border-radius:8px;aspect-ratio:16/9}
+.url{display:flex;gap:6px;align-items:center;margin:6px 0}
+.url label{width:120px;flex:none;font-size:12px;color:var(--muted)}
+.url input{font-family:var(--mono);font-size:12px}
+#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);padding:9px 16px;border-radius:8px;display:none;z-index:30}
+#login{max-width:340px;margin:12vh auto}
+#login .card{padding:24px}
+.clients{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
+.logs{font-family:var(--mono);font-size:12px;white-space:pre-wrap;background:#0b0d11;border:1px solid var(--line);border-radius:8px;padding:12px;max-height:70vh;overflow:auto}
+@media(max-width:600px){.grid{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}main{padding:12px}.url label{width:80px}}
+</style>
+</head>
+<body>
+
+<div id="login" style="display:none">
+  <div class="card">
+    <div class="logo" style="margin-bottom:18px"><i></i>RTMP Media Server</div>
+    <form onsubmit="doLogin(event)">
+      <label class="small">Utilizator</label><input id="lu" autocomplete="username" value="admin">
+      <div style="height:10px"></div>
+      <label class="small">Parolă</label><input id="lp" type="password" autocomplete="current-password">
+      <div style="height:16px"></div>
+      <button class="btn primary" style="width:100%">Autentificare</button>
+      <div id="lerr" class="small" style="color:#ff8a8d;margin-top:10px"></div>
+    </form>
+  </div>
+</div>
+
+<div id="app" style="display:none">
+<header>
+  <div class="logo"><i></i>RTMP Media Server</div>
+  <div class="meta" id="hdrmeta"></div>
+  <nav id="nav">
+    <a data-t="live" class="on">Live</a>
+    <a data-t="streams">Streamuri</a>
+    <a data-t="tokens">Tokenuri</a>
+    <a data-t="recs">Înregistrări</a>
+    <a data-t="settings">Setări</a>
+    <a data-t="logs">Jurnal</a>
+    <a onclick="logout()">Ieșire</a>
+  </nav>
+</header>
+<main>
+  <div id="defpass" class="warnbar" style="display:none">Parola implicită <b>admin/admin</b> e încă activă. Schimb-o din <a onclick="tab('settings')" style="cursor:pointer">Setări</a>.</div>
+
+  <section id="t-live">
+    <h2>Streamuri active <span class="badge" id="livecount">0</span><span class="sp"></span><span class="small" id="totals"></span></h2>
+    <div class="grid" id="livegrid"></div>
+  </section>
+
+  <section id="t-streams" style="display:none">
+    <h2>Streamuri configurate<span class="sp"></span><button class="btn" onclick="addStream()">+ Adaugă</button><button class="btn primary" onclick="saveCfg()">Salvează</button></h2>
+    <p class="small">Publicare din OBS / vMix / FFmpeg: <b>Server</b> <span class="mono" id="pubsrv"></span> · <b>Cheie stream</b> <span class="mono">&lt;nume&gt;?key=&lt;cheie&gt;</span>. Modificările de push/înregistrare se aplică la următoarea publicare.</p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Aplicație</th><th>Nume</th><th>Cheie publicare</th><th>Activ</th><th>DVR</th><th style="min-width:260px">Restream (un URL rtmp:// pe linie)</th><th>Notă</th><th></th></tr></thead>
+      <tbody id="stbody"></tbody>
+    </table></div>
+  </section>
+
+  <section id="t-tokens" style="display:none">
+    <h2>Tokenuri de redare<span class="sp"></span><button class="btn" onclick="addToken()">+ Adaugă</button><button class="btn primary" onclick="saveCfg()">Salvează</button></h2>
+    <p class="small" id="tokinfo"></p>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Nume client</th><th>Token</th><th>Streamuri permise</th><th>Expiră</th><th>Activ</th><th></th></tr></thead>
+      <tbody id="tkbody"></tbody>
+    </table></div>
+  </section>
+
+  <section id="t-recs" style="display:none">
+    <h2>Înregistrări DVR<span class="sp"></span><button class="btn" onclick="loadRecs()">Reîncarcă</button></h2>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Fișier</th><th>Mărime</th><th>Modificat</th><th></th></tr></thead>
+      <tbody id="recbody"></tbody>
+    </table></div>
+  </section>
+
+  <section id="t-settings" style="display:none">
+    <div class="section card">
+      <h2>Server<span class="sp"></span><button class="btn primary" onclick="saveCfg()">Salvează</button></h2>
+      <div class="form">
+        <div><label>Port RTMP</label><input type="number" id="s_rtmp_port"></div>
+        <div><label>Port HTTP (panou + HLS/FLV/TS)</label><input type="number" id="s_http_port"></div>
+        <div class="chk"><input type="checkbox" id="s_publish_auth"><span>Cere cheie la publicare</span></div>
+        <div class="chk"><input type="checkbox" id="s_allow_unknown"><span>Permite streamuri nedefinite (doar fără cheie)</span></div>
+        <div class="chk"><input type="checkbox" id="s_play_auth"><span>Cere token la redare</span></div>
+      </div>
+    </div>
+    <div class="section card">
+      <h2>HLS</h2>
+      <div class="form">
+        <div class="chk"><input type="checkbox" id="s_hls_enabled"><span>HLS activ</span></div>
+        <div><label>Durată segment (sec)</label><input type="number" id="s_hls_segment_sec"></div>
+        <div><label>Segmente în playlist</label><input type="number" id="s_hls_list_size"></div>
+      </div>
+    </div>
+    <div class="section card">
+      <h2>DVR</h2>
+      <div class="form">
+        <div><label>Director înregistrări</label><input id="s_record_dir"></div>
+        <div><label>Fișier nou la fiecare (minute)</label><input type="number" id="s_record_rotate_min"></div>
+        <div><label>Păstrează (zile, 0 = nelimitat)</label><input type="number" id="s_record_keep_days"></div>
+      </div>
+    </div>
+    <div class="section card">
+      <h2>Cont administrator</h2>
+      <div class="form">
+        <div><label>Utilizator</label><input id="pw_user"></div>
+        <div><label>Parola curentă</label><input type="password" id="pw_old"></div>
+        <div><label>Parola nouă (min. 6)</label><input type="password" id="pw_new"></div>
+        <div style="padding-top:20px"><button class="btn primary" onclick="changePass()">Schimbă parola</button></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="t-logs" style="display:none">
+    <h2>Jurnal<span class="sp"></span><button class="btn" onclick="loadLogs()">Reîncarcă</button></h2>
+    <div class="logs" id="logbox"></div>
+  </section>
+</main>
+</div>
+
+<div class="modal" id="mplay" onclick="if(event.target===this)closePlay()">
+  <div class="box">
+    <div class="row" style="margin-bottom:10px"><b class="name" id="ptitle"></b><span class="sp"></span><button class="btn" onclick="closePlay()">Închide</button></div>
+    <video id="pvideo" controls autoplay muted playsinline></video>
+    <div id="perr" class="small" style="margin-top:8px"></div>
+  </div>
+</div>
+
+<div class="modal" id="murl" onclick="if(event.target===this)this.classList.remove('on')">
+  <div class="box">
+    <div class="row" style="margin-bottom:10px"><b class="name" id="utitle"></b><span class="sp"></span><button class="btn" onclick="murl.classList.remove('on')">Închide</button></div>
+    <div id="ulist"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="hls.min.js"></script>
+<script>
+let C=null, S=null, curTab='live', hls=null, openClients={};
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function toast(m,err){const t=$('toast');t.textContent=m;t.style.color=err?'#ff8a8d':'';t.style.display='block';clearTimeout(t._t);t._t=setTimeout(()=>t.style.display='none',2600)}
+async function api(path,opt={}){
+  const r=await fetch('/api/'+path,{headers:{'Content-Type':'application/json'},...opt});
+  if(r.status===401&&path!=='login'){showLogin();throw new Error('neautorizat')}
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(j.error||r.statusText);
+  return j;
+}
+function fmtDur(s){s=Math.floor(s);const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60),x=s%60;return (d?d+'z ':'')+(h?h+'h ':'')+(m?m+'m ':'')+(d?'':x+'s')}
+function fmtBytes(b){const u=['B','KB','MB','GB','TB'];let i=0;while(b>=1024&&i<4){b/=1024;i++}return b.toFixed(i?1:0)+' '+u[i]}
+function fmtKbps(k){return k>=1000?(k/1000).toFixed(2)+' Mbps':Math.round(k)+' kbps'}
+function host(){return location.hostname}
+function rtmpBase(){return 'rtmp://'+host()+(S&&S.rtmp_port!=1935?':'+S.rtmp_port:'')}
+function httpBase(){return location.origin}
+
+function showLogin(){$('app').style.display='none';$('login').style.display='block';$('lp').focus()}
+async function doLogin(e){e.preventDefault();$('lerr').textContent='';
+  try{await api('login',{method:'POST',body:JSON.stringify({user:$('lu').value,pass:$('lp').value})});$('lp').value='';start()}
+  catch(x){$('lerr').textContent=x.message}}
+async function logout(){await api('logout',{method:'POST'}).catch(()=>{});showLogin()}
+
+function tab(t){curTab=t;document.querySelectorAll('#nav a[data-t]').forEach(a=>a.classList.toggle('on',a.dataset.t===t));
+  ['live','streams','tokens','recs','settings','logs'].forEach(x=>$('t-'+x).style.display=x===t?'':'none');
+  if(t==='streams'||t==='tokens'||t==='settings')loadCfg();
+  if(t==='recs')loadRecs(); if(t==='logs')loadLogs();}
+document.querySelectorAll('#nav a[data-t]').forEach(a=>a.onclick=()=>tab(a.dataset.t));
+
+async function start(){
+  try{await refresh()}catch(e){return}
+  $('login').style.display='none';$('app').style.display='block';
+  loadCfg();
+}
+async function refresh(){
+  S=await api('status');
+  $('hdrmeta').textContent=S.hostname+' · v'+S.version+' · pornit de '+fmtDur(S.uptime)+' · RTMP :'+S.rtmp_port+' · HTTP :'+S.http_port;
+  $('defpass').style.display=S.default_pass?'':'none';
+  renderLive();
+}
+setInterval(()=>{if($('app').style.display!=='none'&&curTab==='live')refresh().catch(()=>{})},2000);
+
+function renderLive(){
+  const live=S.streams;$('livecount').textContent=live.length;
+  let tin=0,tout=0,tv=0;live.forEach(s=>{tin+=s.kbps_in;tout+=s.kbps_out;tv+=s.clients.length});
+  $('totals').textContent=live.length?`intrare ${fmtKbps(tin)} · ieșire ${fmtKbps(tout)} · ${tv} clienți`:'';
+  const liveKeys=new Set(live.map(s=>s.app+'/'+s.name));
+  let h='';
+  for(const s of live){
+    const k=s.app+'/'+s.name;
+    h+=`<div class="card">
+      <div class="row"><span class="badge live">LIVE</span><span class="name">${esc(k)}</span>${s.rec?'<span class="badge rec">● REC</span>':''}${s.hls?'<span class="badge ok">HLS</span>':''}</div>
+      <div class="row" style="margin-top:8px"><span class="small mono">${esc(s.codecs)}</span><span class="sp"></span>
+      <button class="btn sm" onclick="play('${esc(s.app)}','${esc(s.name)}',${s.hls})">▶ Preview</button>
+      <button class="btn sm" onclick="urls('${esc(s.app)}','${esc(s.name)}')">URL-uri</button>
+      <button class="btn sm danger" onclick="kick('${esc(s.app)}','${esc(s.name)}',0)">Kick</button></div>
+      <div class="stats">
+        <div class="stat"><b>${fmtKbps(s.kbps_in)}</b><span>intrare</span></div>
+        <div class="stat"><b>${s.fps.toFixed(1)}</b><span>fps</span></div>
+        <div class="stat"><b>${s.clients.length}</b><span>clienți · ${fmtKbps(s.kbps_out)}</span></div>
+        <div class="stat"><b>${fmtDur(s.uptime)}</b><span>uptime</span></div>
+      </div>
+      <div class="small">Publisher: <span class="mono">${esc(s.pub_ip)}</span>${s.rec?` · DVR: <span class="mono">${esc(s.rec.file)}</span> (${fmtBytes(s.rec.bytes)})${s.rec.err?' <span style="color:#ff8a8d">'+esc(s.rec.err)+'</span>':''}`:''}</div>
+      ${s.push.map(p=>`<div class="small" style="margin-top:4px"><span class="dot ${p.status==='conectat'?'g':p.status==='eroare'?'r':'y'}"></span><span class="mono">${esc(p.url)}</span> — ${esc(p.status)}${p.status==='conectat'?' '+fmtDur(p.since)+' · '+fmtBytes(p.bytes):''}${p.err?' · '+esc(p.err):''}</div>`).join('')}
+      ${s.clients.length?`<div class="clients"><a class="small" style="cursor:pointer" onclick="openClients['${esc(k)}']=!openClients['${esc(k)}'];renderLive()">${openClients[k]?'▾':'▸'} Clienți (${s.clients.length})</a>
+      ${openClients[k]?`<div class="tablewrap"><table style="margin-top:6px"><tr><th>IP</th><th>Protocol</th><th>Token</th><th>Viteză</th><th>Total</th><th>Durată</th><th></th></tr>${s.clients.map(c=>`<tr><td class="mono" title="${esc(c.ua)}">${esc(c.ip)}</td><td>${c.proto}</td><td class="mono">${esc(c.token||'-')}</td><td>${fmtKbps(c.kbps)}</td><td>${fmtBytes(c.bytes)}</td><td>${fmtDur((Date.now()-new Date(c.start))/1000)}</td><td>${c.proto!=='HLS'?`<button class="btn sm danger" onclick="kick('${esc(s.app)}','${esc(s.name)}',${c.id})">×</button>`:''}</td></tr>`).join('')}</table></div>`:''}</div>`:''}
+    </div>`;
+  }
+  if(C)for(const s of C.streams){
+    const k=s.app+'/'+s.name; if(liveKeys.has(k))continue;
+    h+=`<div class="card off"><div class="row"><span class="badge">OFFLINE</span><span class="name">${esc(k)}</span>${s.record?'<span class="badge rec">DVR</span>':''}${s.enabled?'':'<span class="badge">dezactivat</span>'}<span class="sp"></span><button class="btn sm" onclick="urls('${esc(s.app)}','${esc(s.name)}')">URL-uri</button></div>${s.note?`<div class="small" style="margin-top:6px">${esc(s.note)}</div>`:''}</div>`;
+  }
+  $('livegrid').innerHTML=h||'<div class="empty">Niciun stream. Adaugă unul din „Streamuri”.</div>';
+}
+
+async function kick(app,name,id){
+  if(!confirm(id?'Deconectez clientul?':'Deconectez publisher-ul '+app+'/'+name+'?'))return;
+  try{await api('kick',{method:'POST',body:JSON.stringify({app,name,client:id})});toast('Deconectat');refresh()}catch(e){toast(e.message,1)}}
+
+function play(app,name,hasHls){
+  $('ptitle').textContent=app+'/'+name;$('perr').textContent='';$('mplay').classList.add('on');
+  const v=$('pvideo');
+  if(!hasHls){$('perr').textContent='Codec-ul nu e compatibil HLS (ex. HEVC). Folosește URL-ul HTTP-FLV în VLC.';return}
+  const src='/'+app+'/'+name+'/index.m3u8';
+  if(window.Hls&&Hls.isSupported()){hls=new Hls({liveSyncDurationCount:2});hls.loadSource(src);hls.attachMedia(v);
+    hls.on(Hls.Events.ERROR,(e,d)=>{if(d.fatal)$('perr').textContent='Eroare player: '+d.details})}
+  else{v.src=src}
+}
+function closePlay(){$('mplay').classList.remove('on');if(hls){hls.destroy();hls=null}const v=$('pvideo');v.pause();v.removeAttribute('src');v.load()}
+
+function urls(app,name){
+  const sc=C&&C.streams.find(s=>s.app===app&&s.name===name);
+  const tk=C&&C.play_auth?'?token=TOKEN':'';
+  const key=sc&&C.publish_auth?'?key='+sc.key:'';
+  const list=[
+    ['OBS Server',rtmpBase()+'/'+app],['OBS Cheie',name+key],
+    ['Publicare FFmpeg',rtmpBase()+'/'+app+'/'+name+key],
+    ['HLS',httpBase()+'/'+app+'/'+name+'/index.m3u8'+tk],['HLS scurt',httpBase()+'/'+app+'/'+name+'.m3u8'+tk],
+    ['HTTP-FLV',httpBase()+'/'+app+'/'+name+'.flv'+tk],['HTTP-TS',httpBase()+'/'+app+'/'+name+'.ts'+tk],
+    ['RTMP redare',rtmpBase()+'/'+app+'/'+name+tk]];
+  $('utitle').textContent=app+'/'+name;
+  $('ulist').innerHTML=list.map(([l,u])=>`<div class="url"><label>${l}</label><input readonly value="${esc(u)}"><button class="btn sm" onclick="navigator.clipboard.writeText(this.previousElementSibling.value);toast('Copiat')">Copiază</button></div>`).join('')+
+    (tk?'<p class="small">Înlocuiește TOKEN cu un token din „Tokenuri”.</p>':'');
+  $('murl').classList.add('on');
+}
+
+// ----- config -----
+async function loadCfg(){
+  C=await api('config');
+  $('pubsrv').textContent=rtmpBase()+'/<aplicație>';
+  renderStreams();renderTokens();
+  for(const k of ['rtmp_port','http_port','hls_segment_sec','hls_list_size','record_dir','record_rotate_min','record_keep_days'])$('s_'+k).value=C[k];
+  for(const k of ['publish_auth','allow_unknown','play_auth','hls_enabled'])$('s_'+k).checked=C[k];
+  $('pw_user').value=C.admin_user;
+  $('tokinfo').innerHTML=C.play_auth?'Redarea cere token: adaugă <span class="mono">?token=…</span> la URL-urile HLS/FLV/TS/RTMP. „Streamuri permise”: <span class="mono">*</span> sau listă <span class="mono">live/tv1,live/tv2</span> (sau <span class="mono">live/*</span>).':'<span style="color:#ffd38a">Protecția cu token e dezactivată</span> — activeaz-o din Setări („Cere token la redare”).';
+  if(curTab==='live')renderLive();
+}
+function syncSettings(){
+  for(const k of ['rtmp_port','http_port','hls_segment_sec','hls_list_size','record_rotate_min','record_keep_days'])C[k]=parseInt($('s_'+k).value)||0;
+  C.record_dir=$('s_record_dir').value.trim();
+  for(const k of ['publish_auth','allow_unknown','play_auth','hls_enabled'])C[k]=$('s_'+k).checked;
+}
+function renderStreams(){
+  $('stbody').innerHTML=C.streams.map((s,i)=>`<tr>
+    <td><input value="${esc(s.app)}" onchange="C.streams[${i}].app=this.value.trim()" style="width:90px"></td>
+    <td><input value="${esc(s.name)}" onchange="C.streams[${i}].name=this.value.trim()" style="width:120px"></td>
+    <td><div class="row" style="flex-wrap:nowrap"><input class="mono" value="${esc(s.key)}" onchange="C.streams[${i}].key=this.value.trim()" style="width:170px"><button class="btn sm" title="Generează" onclick="genKey(${i})">↻</button></div></td>
+    <td><input type="checkbox" ${s.enabled?'checked':''} onchange="C.streams[${i}].enabled=this.checked"></td>
+    <td><input type="checkbox" ${s.record?'checked':''} onchange="C.streams[${i}].record=this.checked"></td>
+    <td><textarea rows="${Math.max(2,s.push.length)}" onchange="C.streams[${i}].push=this.value.split('\\n').map(x=>x.trim()).filter(Boolean)" placeholder="rtmp://a.rtmp.youtube.com/live2/CHEIE">${esc(s.push.join('\n'))}</textarea></td>
+    <td><input value="${esc(s.note)}" onchange="C.streams[${i}].note=this.value"></td>
+    <td><button class="btn sm" onclick="urls('${esc(s.app)}','${esc(s.name)}')">URL</button> <button class="btn sm danger" onclick="C.streams.splice(${i},1);renderStreams()">Șterge</button></td></tr>`).join('')||'<tr><td colspan="8" class="empty">Niciun stream</td></tr>';
+}
+async function genKey(i){const r=await api('genkey');C.streams[i].key=r.key;renderStreams()}
+async function addStream(){const r=await api('genkey');C.streams.push({app:'live',name:'stream'+(C.streams.length+1),key:r.key,enabled:true,record:false,push:[],note:''});renderStreams()}
+function renderTokens(){
+  $('tkbody').innerHTML=C.tokens.map((t,i)=>`<tr>
+    <td><input value="${esc(t.name)}" onchange="C.tokens[${i}].name=this.value"></td>
+    <td><input class="mono" value="${esc(t.token)}" onchange="C.tokens[${i}].token=this.value.trim()"></td>
+    <td><input class="mono" value="${esc(t.streams)}" onchange="C.tokens[${i}].streams=this.value.trim()" placeholder="*"></td>
+    <td><input type="date" value="${esc(t.expires)}" onchange="C.tokens[${i}].expires=this.value"></td>
+    <td><input type="checkbox" ${t.enabled?'checked':''} onchange="C.tokens[${i}].enabled=this.checked"></td>
+    <td><button class="btn sm danger" onclick="C.tokens.splice(${i},1);renderTokens()">Șterge</button></td></tr>`).join('')||'<tr><td colspan="6" class="empty">Niciun token</td></tr>';
+}
+async function addToken(){const r=await api('genkey');C.tokens.push({name:'client'+(C.tokens.length+1),token:r.key,streams:'*',expires:'',enabled:true});renderTokens()}
+async function saveCfg(){
+  syncSettings();
+  try{const r=await api('config',{method:'PUT',body:JSON.stringify(C)});toast(r.restart_needed?'Salvat — repornește serviciul pentru porturile noi':'Salvat');loadCfg()}
+  catch(e){toast(e.message,1)}
+}
+async function changePass(){
+  try{await api('password',{method:'POST',body:JSON.stringify({user:$('pw_user').value.trim(),old:$('pw_old').value,new:$('pw_new').value})});
+    $('pw_old').value=$('pw_new').value='';toast('Parola a fost schimbată');refresh()}catch(e){toast(e.message,1)}}
+
+// ----- recordings -----
+async function loadRecs(){
+  const l=await api('recordings');
+  $('recbody').innerHTML=l.map(f=>`<tr><td class="mono">${esc(f.path)} ${f.live?'<span class="badge rec">● în curs</span>':''}</td><td>${fmtBytes(f.size)}</td><td>${new Date(f.mtime).toLocaleString('ro-RO')}</td>
+    <td style="white-space:nowrap"><a class="btn sm" href="/rec/${encodeURI(f.path)}?dl=1">Descarcă</a> <button class="btn sm" onclick="navigator.clipboard.writeText(location.origin+'/rec/'+encodeURI('${esc(f.path)}'));toast('Link copiat (necesită login)')">Link</button> ${f.live?'':`<button class="btn sm danger" onclick="delRec('${esc(f.path)}')">Șterge</button>`}</td></tr>`).join('')||'<tr><td colspan="4" class="empty">Nicio înregistrare. Bifează „DVR” la un stream.</td></tr>';
+}
+async function delRec(p){if(!confirm('Șterg '+p+'?'))return;try{await api('recordings?path='+encodeURIComponent(p),{method:'DELETE'});loadRecs()}catch(e){toast(e.message,1)}}
+
+async function loadLogs(){const l=await api('logs');const b=$('logbox');b.textContent=l.join('\n')||'(gol)';b.scrollTop=b.scrollHeight}
+
+start().catch(showLogin);
+</script>
+</body>
+</html>

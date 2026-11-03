@@ -1,0 +1,7 @@
+/rtmp-media-server
+/rtmp-media-server.exe
+/dist/
+config.json
+*.log
+*.log.old
+recordings/
